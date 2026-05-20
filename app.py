@@ -1,9 +1,21 @@
 import os
+from functools import wraps
 
 from flask import Flask, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from database.db import create_user, get_user_by_email, init_db, seed_db
+from database.db import (
+    create_user,
+    get_category_totals_for_user,
+    get_expense_total_for_user,
+    get_expenses_for_user,
+    get_user_by_email,
+    get_user_by_id,
+    init_db,
+    seed_db,
+    update_user,
+    update_user_password,
+)
 
 app = Flask(__name__)
 # Set SECRET_KEY in the environment for production deployments.
@@ -15,12 +27,27 @@ with app.app_context():
 
 
 # ------------------------------------------------------------------ #
-# Routes                                                              #
+# Helpers                                                             #
 # ------------------------------------------------------------------ #
 
-@app.route("/")
-def landing():
-    return render_template("landing.html")
+def login_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not session.get("user_id"):
+            return redirect(url_for("login"))
+        return view(*args, **kwargs)
+
+    return wrapped
+
+
+def _get_current_user():
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    user = get_user_by_id(user_id)
+    if user is None:
+        session.clear()
+    return user
 
 
 def _is_valid_email(email):
@@ -28,6 +55,78 @@ def _is_valid_email(email):
         return False
     domain = email.split("@", 1)[1]
     return "." in domain
+
+
+def _format_member_since(created_at):
+    if not created_at:
+        return ""
+    return created_at[:10]
+
+
+def _format_inr(amount):
+    if amount == int(amount):
+        return f"₹{int(amount):,}"
+    return f"₹{amount:,.2f}"
+
+
+app.jinja_env.filters["inr"] = _format_inr
+
+
+def _render_profile(user, **kwargs):
+    return render_template(
+        "profile.html",
+        user=user,
+        name=kwargs.get("name", user["name"]),
+        email=kwargs.get("email", user["email"]),
+        member_since=_format_member_since(user["created_at"]),
+        profile_error=kwargs.get("profile_error"),
+        profile_success=kwargs.get("profile_success"),
+        password_error=kwargs.get("password_error"),
+        password_success=kwargs.get("password_success"),
+    )
+
+
+# ------------------------------------------------------------------ #
+# Routes                                                              #
+# ------------------------------------------------------------------ #
+
+@app.route("/")
+def landing():
+    user_id = session.get("user_id")
+    if not user_id:
+        return render_template("landing.html", logged_in=False)
+
+    user = get_user_by_id(user_id)
+    if user is None:
+        session.clear()
+        return render_template("landing.html", logged_in=False)
+
+    expenses = get_expenses_for_user(user_id)
+    total = get_expense_total_for_user(user_id)
+    categories = get_category_totals_for_user(user_id)
+    max_cat_total = max((row["total"] for row in categories), default=0) or 1
+
+    bar_classes = ["", "mock-bar-2", "mock-bar-3", "mock-bar-4"]
+    category_bars = []
+    for index, row in enumerate(categories):
+        category_bars.append(
+            {
+                "category": row["category"],
+                "total": row["total"],
+                "width_pct": round(row["total"] / max_cat_total * 100),
+                "bar_class": bar_classes[index % len(bar_classes)],
+            }
+        )
+
+    return render_template(
+        "landing.html",
+        logged_in=True,
+        user_name=session.get("user_name", user["name"]),
+        total_formatted=_format_inr(total),
+        expense_count=len(expenses),
+        expenses=expenses,
+        category_bars=category_bars,
+    )
 
 
 @app.route("/register", methods=["GET", "POST"])
@@ -89,14 +188,78 @@ def logout():
     return redirect(url_for("landing"))
 
 
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile():
+    user = _get_current_user()
+    if user is None:
+        return redirect(url_for("login"))
+
+    if request.method == "GET":
+        return _render_profile(user)
+
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip().lower()
+
+    if not name:
+        return _render_profile(
+            user,
+            name=name,
+            email=email,
+            profile_error="Please enter your full name.",
+        )
+    if not _is_valid_email(email):
+        return _render_profile(
+            user,
+            name=name,
+            email=email,
+            profile_error="Please enter a valid email address.",
+        )
+
+    existing = get_user_by_email(email)
+    if existing and existing["id"] != user["id"]:
+        return _render_profile(
+            user,
+            name=name,
+            email=email,
+            profile_error="An account with this email already exists.",
+        )
+
+    update_user(user["id"], name, email)
+    session["user_name"] = name
+    user = get_user_by_id(user["id"])
+    return _render_profile(user, profile_success="Profile updated successfully.")
+
+
+@app.route("/profile/password", methods=["POST"])
+@login_required
+def profile_password():
+    user = _get_current_user()
+    if user is None:
+        return redirect(url_for("login"))
+
+    current = request.form.get("current_password", "")
+    new_password = request.form.get("new_password", "")
+    confirm = request.form.get("confirm_password", "")
+
+    if not check_password_hash(user["password_hash"], current):
+        return _render_profile(user, password_error="Current password is incorrect.")
+    if len(new_password) < 8:
+        return _render_profile(
+            user,
+            password_error="New password must be at least 8 characters.",
+        )
+    if new_password != confirm:
+        return _render_profile(user, password_error="New passwords do not match.")
+
+    update_user_password(user["id"], generate_password_hash(new_password))
+    user = get_user_by_id(user["id"])
+    return _render_profile(user, password_success="Password updated successfully.")
+
+
 # ------------------------------------------------------------------ #
 # Placeholder routes — students will implement these                  #
 # ------------------------------------------------------------------ #
-
-
-@app.route("/profile")
-def profile():
-    return "Profile page — coming in Step 4"
 
 
 @app.route("/expenses/add")
