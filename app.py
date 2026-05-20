@@ -1,6 +1,7 @@
-from flask import Flask, render_template
+from flask import Flask, redirect, render_template, request, url_for
+from werkzeug.security import generate_password_hash
 
-from database.db import get_db, init_db, seed_db
+from database.db import create_user, get_user_by_email, init_db, seed_db
 
 app = Flask(__name__)
 
@@ -18,9 +19,41 @@ def landing():
     return render_template("landing.html")
 
 
-@app.route("/register")
+def _is_valid_email(email):
+    if "@" not in email:
+        return False
+    domain = email.split("@", 1)[1]
+    return "." in domain
+
+
+@app.route("/register", methods=["GET", "POST"])
 def register():
-    return render_template("register.html")
+    if request.method == "GET":
+        return render_template("register.html")
+
+    name = request.form.get("name", "").strip()
+    email = request.form.get("email", "").strip().lower()
+    password = request.form.get("password", "")
+
+    error = None
+    if not name:
+        error = "Please enter your full name."
+    elif not _is_valid_email(email):
+        error = "Please enter a valid email address."
+    elif len(password) < 8:
+        error = "Password must be at least 8 characters."
+    elif get_user_by_email(email):
+        error = "An account with this email already exists."
+    else:
+        create_user(name, email, generate_password_hash(password))
+        return redirect(url_for("login"))
+
+    return render_template(
+        "register.html",
+        error=error,
+        name=name,
+        email=email,
+    )
 
 
 @app.route("/login")

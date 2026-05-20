@@ -79,3 +79,27 @@ def seed_db():
         db.commit()
     finally:
         db.close()
+
+
+def get_user_by_email(email):
+    db = get_db()
+    try:
+        return db.execute(
+            "SELECT * FROM users WHERE email = ?",
+            (email,),
+        ).fetchone()
+    finally:
+        db.close()
+
+
+def create_user(name, email, password_hash):
+    db = get_db()
+    try:
+        cursor = db.execute(
+            "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
+            (name, email, password_hash),
+        )
+        db.commit()
+        return cursor.lastrowid
+    finally:
+        db.close()
