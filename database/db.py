@@ -103,3 +103,82 @@ def create_user(name, email, password_hash):
         return cursor.lastrowid
     finally:
         db.close()
+
+
+def get_user_by_id(user_id):
+    db = get_db()
+    try:
+        return db.execute(
+            "SELECT * FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+    finally:
+        db.close()
+
+
+def update_user(user_id, name, email):
+    db = get_db()
+    try:
+        db.execute(
+            "UPDATE users SET name = ?, email = ? WHERE id = ?",
+            (name, email, user_id),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def update_user_password(user_id, password_hash):
+    db = get_db()
+    try:
+        db.execute(
+            "UPDATE users SET password_hash = ? WHERE id = ?",
+            (password_hash, user_id),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def get_expenses_for_user(user_id):
+    db = get_db()
+    try:
+        return db.execute(
+            """
+            SELECT id, category, amount, date, description
+            FROM expenses
+            WHERE user_id = ?
+            ORDER BY date DESC, id DESC
+            """,
+            (user_id,),
+        ).fetchall()
+    finally:
+        db.close()
+
+
+def get_expense_total_for_user(user_id):
+    db = get_db()
+    try:
+        return db.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE user_id = ?",
+            (user_id,),
+        ).fetchone()[0]
+    finally:
+        db.close()
+
+
+def get_category_totals_for_user(user_id):
+    db = get_db()
+    try:
+        return db.execute(
+            """
+            SELECT category, SUM(amount) AS total
+            FROM expenses
+            WHERE user_id = ?
+            GROUP BY category
+            ORDER BY total DESC
+            """,
+            (user_id,),
+        ).fetchall()
+    finally:
+        db.close()

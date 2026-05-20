@@ -1,8 +1,88 @@
 {% extends "base.html" %}
 
-{% block title %}Spendly — Track Every Rupee{% endblock %}
+{% block title %}{% if logged_in %}Dashboard — Spendly{% else %}Spendly — Track Every Rupee{% endif %}{% endblock %}
 
 {% block content %}
+
+{% if logged_in %}
+
+<section class="page-header-section dashboard-header">
+    <div class="page-header-inner">
+        <div class="page-header-text">
+            <div class="hero-badge">Your dashboard</div>
+            <h1 class="page-title">Welcome back, {{ user_name }}</h1>
+            <p class="page-subtitle">Track every rupee — here is your spending at a glance.</p>
+        </div>
+        <a href="{{ url_for('profile') }}" class="btn-ghost">Manage profile</a>
+    </div>
+</section>
+
+<section class="page-body dashboard-body">
+    <div class="page-body-inner dashboard-grid">
+
+        <div class="dashboard-summary-col">
+            <div class="data-card dashboard-total-card">
+                <span class="mock-label">Total spending</span>
+                <p class="dashboard-total">{{ total_formatted }}</p>
+                <p class="dashboard-meta">{{ expense_count }} expense{% if expense_count != 1 %}s{% endif %} recorded</p>
+            </div>
+
+            {% if category_bars %}
+            <div class="data-card dashboard-breakdown-card">
+                <h2 class="profile-card-title">By category</h2>
+                <div class="mock-bars">
+                    {% for bar in category_bars %}
+                    <div class="mock-bar-row">
+                        <span class="mock-cat">{{ bar.category }}</span>
+                        <div class="mock-bar-track">
+                            <div class="mock-bar {{ bar.bar_class }}" style="width: {{ bar.width_pct }}%"></div>
+                        </div>
+                        <span class="mock-amt">{{ bar.total|inr }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="data-card dashboard-expenses-card">
+            <h2 class="profile-card-title">Expense details</h2>
+
+            {% if expenses %}
+            <div class="expense-table-wrap">
+                <table class="expense-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">Date</th>
+                            <th scope="col">Category</th>
+                            <th scope="col">Description</th>
+                            <th scope="col" class="expense-table-amount">Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for expense in expenses %}
+                        <tr>
+                            <td>{{ expense.date }}</td>
+                            <td><span class="expense-cat-badge">{{ expense.category }}</span></td>
+                            <td>{{ expense.description or '—' }}</td>
+                            <td class="expense-table-amount">{{ expense.amount|inr }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-state dashboard-empty">
+                <h3 class="empty-title">No expenses yet</h3>
+                <p class="empty-body">Your spending will appear here once you start tracking.</p>
+            </div>
+            {% endif %}
+        </div>
+
+    </div>
+</section>
+
+{% else %}
 
 <section class="hero">
     <div class="hero-inner">
@@ -88,5 +168,7 @@
         <a href="{{ url_for('register') }}" class="btn-primary">Create free account</a>
     </div>
 </section>
+
+{% endif %}
 
 {% endblock %}
