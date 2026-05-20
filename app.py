@@ -1,4 +1,6 @@
+import calendar
 import os
+from datetime import datetime
 from functools import wraps
 
 from flask import Flask, redirect, render_template, request, session, url_for
@@ -72,6 +74,89 @@ def _format_inr(amount):
 app.jinja_env.filters["inr"] = _format_inr
 
 
+def _parse_date_arg(value):
+    if not value or not value.strip():
+        return None, None
+    try:
+        datetime.strptime(value.strip(), "%Y-%m-%d")
+        return value.strip(), None
+    except ValueError:
+        return None, "Please use dates in YYYY-MM-DD format."
+
+
+def _resolve_date_filter():
+    raw_from = request.args.get("from", "").strip()
+    raw_to = request.args.get("to", "").strip()
+    if not raw_from and not raw_to:
+        return None, None, None, None, None
+
+    filter_error = None
+    from_date = None
+    to_date = None
+
+    if raw_from:
+        from_date, err = _parse_date_arg(raw_from)
+        if err:
+            filter_error = err
+    if raw_to and not filter_error:
+        to_date, err = _parse_date_arg(raw_to)
+        if err:
+            filter_error = err
+
+    if not filter_error and from_date and to_date and from_date > to_date:
+        filter_error = "Start date must be on or before end date."
+
+    if filter_error:
+        return None, None, raw_from, raw_to, filter_error
+
+    return from_date, to_date, raw_from or None, raw_to or None, None
+
+
+def _build_filter_label(from_date, to_date):
+    if from_date and to_date:
+        return f"Showing {from_date} to {to_date}"
+    if from_date:
+        return f"Showing from {from_date}"
+    if to_date:
+        return f"Showing through {to_date}"
+    return None
+
+
+def _month_preset_bounds():
+    now = datetime.now()
+    last_day = calendar.monthrange(now.year, now.month)[1]
+    return {
+        "from": now.replace(day=1).strftime("%Y-%m-%d"),
+        "to": now.replace(day=last_day).strftime("%Y-%m-%d"),
+    }
+
+
+def _build_category_bars(categories):
+    max_cat_total = max((row["total"] for row in categories), default=0) or 1
+    bar_classes = ["", "mock-bar-2", "mock-bar-3", "mock-bar-4"]
+    return [
+        {
+            "category": row["category"],
+            "total": row["total"],
+            "width_pct": round(row["total"] / max_cat_total * 100),
+            "bar_class": bar_classes[index % len(bar_classes)],
+        }
+        for index, row in enumerate(categories)
+    ]
+
+
+def _load_user_spending(user_id, from_date=None, to_date=None):
+    expenses = get_expenses_for_user(user_id, from_date, to_date)
+    total = get_expense_total_for_user(user_id, from_date, to_date)
+    categories = get_category_totals_for_user(user_id, from_date, to_date)
+    return {
+        "expenses": expenses,
+        "total_formatted": _format_inr(total),
+        "expense_count": len(expenses),
+        "category_bars": _build_category_bars(categories),
+    }
+
+
 def _render_profile(user, **kwargs):
     return render_template(
         "profile.html",
@@ -101,31 +186,27 @@ def landing():
         session.clear()
         return render_template("landing.html", logged_in=False)
 
-    expenses = get_expenses_for_user(user_id)
-    total = get_expense_total_for_user(user_id)
-    categories = get_category_totals_for_user(user_id)
-    max_cat_total = max((row["total"] for row in categories), default=0) or 1
-
-    bar_classes = ["", "mock-bar-2", "mock-bar-3", "mock-bar-4"]
-    category_bars = []
-    for index, row in enumerate(categories):
-        category_bars.append(
-            {
-                "category": row["category"],
-                "total": row["total"],
-                "width_pct": round(row["total"] / max_cat_total * 100),
-                "bar_class": bar_classes[index % len(bar_classes)],
-            }
-        )
+    from_date, to_date, filter_from, filter_to, filter_error = _resolve_date_filter()
+    query_from = from_date
+    query_to = to_date
+    if filter_error:
+        query_from = None
+        query_to = None
+    spending = _load_user_spending(user_id, query_from, query_to)
 
     return render_template(
         "landing.html",
         logged_in=True,
         user_name=session.get("user_name", user["name"]),
-        total_formatted=_format_inr(total),
-        expense_count=len(expenses),
-        expenses=expenses,
-        category_bars=category_bars,
+        total_formatted=spending["total_formatted"],
+        expense_count=spending["expense_count"],
+        expenses=spending["expenses"],
+        category_bars=spending["category_bars"],
+        filter_from=filter_from,
+        filter_to=filter_to,
+        filter_error=filter_error,
+        filter_label=_build_filter_label(query_from, query_to),
+        month_preset=_month_preset_bounds(),
     )
 
 
