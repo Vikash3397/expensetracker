@@ -185,3 +185,4 @@ conn.close()
 - Profile, expenses, navbar auth state
 - CSS / `login.html` changes
 - Automated pytest (not in spec)
+n
