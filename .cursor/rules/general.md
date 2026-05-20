@@ -20,6 +20,8 @@ alwaysApply: true
 
 Reference canonical UI patterns in `@templates/base.html`, `@templates/landing.html`, and `@static/css/style.css` before adding new pages.
 
+**Frontend design:** For new or updated templates, layouts, or CSS, read and follow `.cursor/skills/frontend-design/SKILL.md` (page archetypes, component reuse, tokens). Snippets live in `reference.md` in that folder.
+
 ---
 
 ## 2. Architecture layout (high level)
