@@ -140,45 +140,62 @@ def update_user_password(user_id, password_hash):
         db.close()
 
 
-def get_expenses_for_user(user_id):
+def _date_filter_clause(from_date, to_date):
+    clauses = []
+    params = []
+    if from_date:
+        clauses.append("date >= ?")
+        params.append(from_date)
+    if to_date:
+        clauses.append("date <= ?")
+        params.append(to_date)
+    if not clauses:
+        return "", []
+    return " AND " + " AND ".join(clauses), params
+
+
+def get_expenses_for_user(user_id, from_date=None, to_date=None):
+    date_clause, date_params = _date_filter_clause(from_date, to_date)
     db = get_db()
     try:
         return db.execute(
-            """
+            f"""
             SELECT id, category, amount, date, description
             FROM expenses
-            WHERE user_id = ?
+            WHERE user_id = ?{date_clause}
             ORDER BY date DESC, id DESC
             """,
-            (user_id,),
+            (user_id, *date_params),
         ).fetchall()
     finally:
         db.close()
 
 
-def get_expense_total_for_user(user_id):
+def get_expense_total_for_user(user_id, from_date=None, to_date=None):
+    date_clause, date_params = _date_filter_clause(from_date, to_date)
     db = get_db()
     try:
         return db.execute(
-            "SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE user_id = ?",
-            (user_id,),
+            f"SELECT COALESCE(SUM(amount), 0) FROM expenses WHERE user_id = ?{date_clause}",
+            (user_id, *date_params),
         ).fetchone()[0]
     finally:
         db.close()
 
 
-def get_category_totals_for_user(user_id):
+def get_category_totals_for_user(user_id, from_date=None, to_date=None):
+    date_clause, date_params = _date_filter_clause(from_date, to_date)
     db = get_db()
     try:
         return db.execute(
-            """
+            f"""
             SELECT category, SUM(amount) AS total
             FROM expenses
-            WHERE user_id = ?
+            WHERE user_id = ?{date_clause}
             GROUP BY category
             ORDER BY total DESC
             """,
-            (user_id,),
+            (user_id, *date_params),
         ).fetchall()
     finally:
         db.close()

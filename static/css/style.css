@@ -723,6 +723,58 @@ a { color: inherit; text-decoration: none; }
 }
 
 /* ------------------------------------------------------------------ */
+/* Dashboard date filter                                               */
+/* ------------------------------------------------------------------ */
+
+.dashboard-filter-bar {
+    margin-bottom: 1.5rem;
+}
+
+.dashboard-filter-label {
+    font-size: 0.9rem;
+    color: var(--ink-muted);
+    margin: 0 0 1rem;
+}
+
+.date-filter-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.date-filter-form .form-group {
+    margin-bottom: 0;
+    flex: 1 1 10rem;
+    min-width: 8rem;
+}
+
+.date-filter-form .btn-primary,
+.date-filter-form .btn-ghost {
+    flex: 0 0 auto;
+    margin-bottom: 0;
+}
+
+.date-filter-presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+    margin-bottom: 1.5rem;
+}
+
+.date-filter-preset {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.date-filter-preset:hover {
+    text-decoration: underline;
+}
+
+/* ------------------------------------------------------------------ */
 /* Responsive                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -750,5 +802,16 @@ a { color: inherit; text-decoration: none; }
     .page-header-inner {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .date-filter-form {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .date-filter-form .btn-primary,
+    .date-filter-form .btn-ghost {
+        width: 100%;
+        text-align: center;
     }
 }

@@ -10,9 +10,9 @@ If no argument is provided, stop immediately and say:
 "Please provide a spec name. Usage: /test-feature 
 <spec-name> e.g. /test-feature 05-backend-connection"
 
-If `.claude/specs/$ARGUMENTS.md` does not exist, stop 
+If `.cursor/specs/$ARGUMENTS.md` does not exist, stop 
 immediately and say:
-"Spec file not found at .claude/specs/$ARGUMENTS.md. 
+"Spec file not found at .cursor/specs/$ARGUMENTS.md. 
 Please check the spec name and try again."
 
 ---
@@ -23,7 +23,7 @@ Invoke the **spendly-test-writer** subagent with the
 following context:
 
 - Spec file to base tests on: 
-  `.claude/specs/$ARGUMENTS.md`
+  `.cursor/specs/$ARGUMENTS.md`
 - Source files to read for structure:
   - `app.py`
   - `database/` directory
@@ -50,7 +50,7 @@ context:
 - Test file to execute:
   `tests/test_$ARGUMENTS.py`
 - Spec file for context:
-  `.claude/specs/$ARGUMENTS.md`
+  `.cursor/specs/$ARGUMENTS.md`
 - Source files to analyze against when diagnosing 
   failures:
   - `app.py`
