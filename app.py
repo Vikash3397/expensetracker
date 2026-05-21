@@ -1,4 +1,5 @@
 import calendar
+import math
 import os
 from datetime import datetime
 from functools import wraps
@@ -7,6 +8,7 @@ from flask import Flask, redirect, render_template, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from database.db import (
+    create_expense,
     create_user,
     get_category_totals_for_user,
     get_expense_total_for_user,
@@ -26,6 +28,18 @@ app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-me")
 with app.app_context():
     init_db()
     seed_db()
+
+ALLOWED_CATEGORIES = (
+    "Food",
+    "Transport",
+    "Bills",
+    "Health",
+    "Entertainment",
+    "Shopping",
+    "Other",
+)
+
+MAX_EXPENSE_DESCRIPTION_LENGTH = 500
 
 
 # ------------------------------------------------------------------ #
@@ -84,9 +98,7 @@ def _parse_date_arg(value):
         return None, "Please use dates in YYYY-MM-DD format."
 
 
-def _resolve_date_filter():
-    raw_from = request.args.get("from", "").strip()
-    raw_to = request.args.get("to", "").strip()
+def _resolve_date_filter_values(raw_from, raw_to):
     if not raw_from and not raw_to:
         return None, None, None, None, None
 
@@ -157,6 +169,81 @@ def _load_user_spending(user_id, from_date=None, to_date=None):
     }
 
 
+def _validate_expense_form():
+    amount_raw = request.form.get("amount", "").strip()
+    category = request.form.get("category", "").strip()
+    date_raw = request.form.get("date", "").strip()
+    description = request.form.get("description", "").strip() or None
+
+    if not amount_raw:
+        return None, "Please enter an amount."
+    try:
+        amount = float(amount_raw)
+    except ValueError:
+        return None, "Please enter a valid amount."
+    if not math.isfinite(amount) or amount <= 0:
+        return None, "Amount must be greater than zero."
+
+    if not category:
+        return None, "Please select a category."
+    if category not in ALLOWED_CATEGORIES:
+        return None, "Please select a valid category."
+
+    if not date_raw:
+        return None, "Please enter a date."
+    expense_date, err = _parse_date_arg(date_raw)
+    if err:
+        return None, err
+
+    if description and len(description) > MAX_EXPENSE_DESCRIPTION_LENGTH:
+        return None, (
+            f"Description must be {MAX_EXPENSE_DESCRIPTION_LENGTH} characters or fewer."
+        )
+
+    return {
+        "amount": amount,
+        "category": category,
+        "date": expense_date,
+        "description": description,
+    }, None
+
+
+def _render_landing_dashboard(user, user_id, **kwargs):
+    if "filter_from_raw" in kwargs:
+        raw_from = kwargs.pop("filter_from_raw")
+        raw_to = kwargs.pop("filter_to_raw")
+    else:
+        raw_from = request.args.get("from", "").strip()
+        raw_to = request.args.get("to", "").strip()
+
+    from_date, to_date, filter_from, filter_to, filter_error = _resolve_date_filter_values(
+        raw_from, raw_to
+    )
+    query_from = from_date
+    query_to = to_date
+    if filter_error:
+        query_from = None
+        query_to = None
+    spending = _load_user_spending(user_id, query_from, query_to)
+
+    return render_template(
+        "landing.html",
+        logged_in=True,
+        user_name=session.get("user_name", user["name"]),
+        categories=ALLOWED_CATEGORIES,
+        total_formatted=spending["total_formatted"],
+        expense_count=spending["expense_count"],
+        expenses=spending["expenses"],
+        category_bars=spending["category_bars"],
+        filter_from=filter_from,
+        filter_to=filter_to,
+        filter_error=filter_error,
+        filter_label=_build_filter_label(query_from, query_to),
+        month_preset=_month_preset_bounds(),
+        **kwargs,
+    )
+
+
 def _render_profile(user, **kwargs):
     return render_template(
         "profile.html",
@@ -175,39 +262,55 @@ def _render_profile(user, **kwargs):
 # Routes                                                              #
 # ------------------------------------------------------------------ #
 
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def landing():
-    user_id = session.get("user_id")
-    if not user_id:
-        return render_template("landing.html", logged_in=False)
-
-    user = get_user_by_id(user_id)
+    user = _get_current_user()
     if user is None:
-        session.clear()
+        if request.method == "POST":
+            return redirect(url_for("login"))
         return render_template("landing.html", logged_in=False)
 
-    from_date, to_date, filter_from, filter_to, filter_error = _resolve_date_filter()
-    query_from = from_date
-    query_to = to_date
-    if filter_error:
-        query_from = None
-        query_to = None
-    spending = _load_user_spending(user_id, query_from, query_to)
+    user_id = user["id"]
 
-    return render_template(
-        "landing.html",
-        logged_in=True,
-        user_name=session.get("user_name", user["name"]),
-        total_formatted=spending["total_formatted"],
-        expense_count=spending["expense_count"],
-        expenses=spending["expenses"],
-        category_bars=spending["category_bars"],
-        filter_from=filter_from,
-        filter_to=filter_to,
-        filter_error=filter_error,
-        filter_label=_build_filter_label(query_from, query_to),
-        month_preset=_month_preset_bounds(),
-    )
+    if request.method == "POST":
+        filter_from_raw = request.form.get("from", "").strip()
+        filter_to_raw = request.form.get("to", "").strip()
+        expense_data, expense_error = _validate_expense_form()
+
+        if expense_error:
+            return _render_landing_dashboard(
+                user,
+                user_id,
+                filter_from_raw=filter_from_raw,
+                filter_to_raw=filter_to_raw,
+                expense_error=expense_error,
+                expense_amount=request.form.get("amount", "").strip(),
+                expense_category=request.form.get("category", "").strip(),
+                expense_date=request.form.get("date", "").strip(),
+                expense_description=request.form.get("description", "").strip(),
+            )
+
+        create_expense(
+            user_id,
+            expense_data["amount"],
+            expense_data["category"],
+            expense_data["date"],
+            expense_data["description"],
+        )
+
+        session["expense_success"] = "Expense added successfully."
+        redirect_kwargs = {}
+        if filter_from_raw:
+            redirect_kwargs["from"] = filter_from_raw
+        if filter_to_raw:
+            redirect_kwargs["to"] = filter_to_raw
+        return redirect(url_for("landing", **redirect_kwargs))
+
+    dashboard_kwargs = {}
+    expense_success = session.pop("expense_success", None)
+    if expense_success:
+        dashboard_kwargs["expense_success"] = expense_success
+    return _render_landing_dashboard(user, user_id, **dashboard_kwargs)
 
 
 @app.route("/register", methods=["GET", "POST"])

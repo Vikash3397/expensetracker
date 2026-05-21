@@ -105,6 +105,22 @@ def create_user(name, email, password_hash):
         db.close()
 
 
+def create_expense(user_id, amount, category, date, description=None):
+    db = get_db()
+    try:
+        cursor = db.execute(
+            """
+            INSERT INTO expenses (user_id, amount, category, date, description)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (user_id, amount, category, date, description),
+        )
+        db.commit()
+        return cursor.lastrowid
+    finally:
+        db.close()
+
+
 def get_user_by_id(user_id):
     db = get_db()
     try:
